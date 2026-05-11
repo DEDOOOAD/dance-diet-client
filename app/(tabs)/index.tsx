@@ -3,21 +3,51 @@ import { DanceVisionPracticeModal } from '@/components/dance-vision-practice-mod
 import { colors, radius } from '@/constants/theme';
 import { danceClasses, featuredDanceIds, type DanceClass } from '@/data/dances';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
-const DAYS = [
-  { name: 'MON', num: 10, done: true },
-  { name: 'TUE', num: 11, done: true },
-  { name: 'WED', num: 12, done: true },
-  { name: 'THU', num: 13, done: true },
-  { name: 'FRI', num: 14, done: false },
-  { name: 'SAT', num: 15, done: false },
-  { name: 'SUN', num: 16, done: false },
-] as const;
+const DAY_KEYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
 
-type DayKey = (typeof DAYS)[number]['name'];
+type DayKey = (typeof DAY_KEYS)[number];
+
+type WeekDay = {
+  name: DayKey;
+  num: number;
+  done: boolean;
+};
+
+function getDayKey(date: Date): DayKey {
+  return DAY_KEYS[(date.getDay() + 6) % 7];
+}
+
+function getStartOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function getStartOfWeek(date: Date) {
+  const next = getStartOfDay(date);
+  next.setDate(next.getDate() - ((next.getDay() + 6) % 7));
+  return next;
+}
+
+function buildWeekDays(today: Date): WeekDay[] {
+  const startOfWeek = getStartOfWeek(today);
+  const startOfToday = getStartOfDay(today).getTime();
+
+  return DAY_KEYS.map((name, index) => {
+    const date = new Date(startOfWeek);
+    date.setDate(startOfWeek.getDate() + index);
+
+    return {
+      name,
+      num: date.getDate(),
+      done: getStartOfDay(date).getTime() <= startOfToday,
+    };
+  });
+}
 
 const DAY_METRICS: Record<
   DayKey,
@@ -191,9 +221,20 @@ function MissionCard({ item, isLive, onOpen }: MissionCardProps) {
 }
 
 export default function HomeScreen() {
-  const [selectedDay, setSelectedDay] = useState<DayKey>('THU');
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<DayKey>(() => getDayKey(new Date()));
   const [selectedDance, setSelectedDance] = useState<DanceClass | null>(null);
   const [practiceDance, setPracticeDance] = useState<DanceClass | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDate(new Date());
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const weekDays = useMemo(() => buildWeekDays(currentDate), [currentDate]);
 
   const favoriteDances = useMemo(
     () => danceClasses.filter((dance) => featuredDanceIds.includes(dance.id as (typeof featuredDanceIds)[number])),
@@ -201,8 +242,8 @@ export default function HomeScreen() {
   );
 
   const selectedDayInfo = useMemo(
-    () => DAYS.find((day) => day.name === selectedDay) ?? DAYS[0],
-    [selectedDay]
+    () => weekDays.find((day) => day.name === selectedDay) ?? weekDays[0] ?? { name: 'MON', num: currentDate.getDate(), done: true },
+    [currentDate, selectedDay, weekDays]
   );
 
   const selectedMetrics = DAY_METRICS[selectedDay];
@@ -264,7 +305,7 @@ export default function HomeScreen() {
         <View style={styles.weekSection}>
           <Text style={styles.sectionLabel}>{'\uC774\uBC88 \uC8FC'}</Text>
           <FlatList
-            data={DAYS}
+            data={weekDays}
             extraData={selectedDay}
             horizontal
             showsHorizontalScrollIndicator={false}

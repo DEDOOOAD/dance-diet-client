@@ -645,10 +645,6 @@ export default function RecordScreen() {
               </View>
             </View>
 
-            <View style={styles.grid}>
-              {weightCards.map((item, index) => <StatCard key={item.label} item={item} strong={index === 0} />)}
-            </View>
-
             <View style={styles.card}>
               <View style={styles.rowBetween}>
                 <View>
@@ -660,6 +656,10 @@ export default function RecordScreen() {
               <View style={styles.chartWrap}>
                 <WeightTrendChart data={weightHistory} targetWeight={targetWeight} />
               </View>
+            </View>
+
+            <View style={styles.grid}>
+              {weightCards.map((item, index) => <StatCard key={item.label} item={item} strong={index === 0} />)}
             </View>
 
             <View style={[styles.card, styles.tipCard]}>
