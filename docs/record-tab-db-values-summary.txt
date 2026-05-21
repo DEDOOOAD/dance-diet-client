@@ -1,0 +1,207 @@
+기록탭 DB 연동값 정리
+작성일: 2026-05-13
+
+1. 현재 코드 상태
+- 기록탭 화면(app/(tabs)/record.tsx)은 아직 실제 서버 fetch 없이 더미 데이터로만 동작함.
+- 서버 설정에는 /api/records 엔드포인트가 선언되어 있지만, 기록탭에서 아직 사용하지 않음.
+- 체중 관련 전용 엔드포인트는 현재 코드상 별도로 선언되어 있지 않음.
+- 체중/목표 체중 값은 프로필 탭(app/(tabs)/profile.tsx)의 bodyProfile 상태에만 존재함.
+- 운동 기록의 원천 후보는 라이브 연습 세션 API(/api/live/session/start, /api/live/session/end)와 WebSocket 결과값임.
+
+2. 현재 코드상 "실제로" 서버와 주고받는 값
+
+[A] 라이브 세션 시작
+- 위치: hooks/use-dance-vision-practice-modal-controller.ts:403-417
+- endpoint: POST /api/live/session/start
+- 보내는 값(request body)
+  - uuid: 사용자 식별값
+  - dance_type: 춤 장르
+  - content_id: 춤/클래스 ID
+- 받는 값(response body)
+  - session_id: 세션 식별값
+  - ws_url: WebSocket 주소(옵션)
+
+[B] 라이브 세션 중 프레임 메타데이터
+- 위치: hooks/use-dance-vision-practice-modal-controller.ts:587-591
+- WebSocket으로 보내는 메타데이터
+  - type: "frame_binary"
+  - UUID: 사용자 식별값
+  - session_id: 세션 ID
+  - frame_index: 프레임 순번
+  - total_frame: 누적 프레임 수
+  - user_weight: 사용자 체중(kg)
+
+[C] 라이브 세션 결과 수신
+- 위치: hooks/use-dance-vision-practice-modal-controller.ts:350-365
+- 서버가 내려주는 값(response message)
+  - session_id
+  - total_frames
+  - elapsed_seconds
+  - total_calories 또는 calories 또는 calories_burned
+  - movement_score
+
+[D] 라이브 세션 종료
+- 위치: hooks/use-dance-vision-practice-modal-controller.ts:305-310
+- endpoint: POST /api/live/session/end
+- 보내는 값(request body)
+  - session_id
+
+[E] 기록 조회 엔드포인트 선언만 존재
+- 위치: services/server-config/general-server.ts:78-80
+- endpoint: GET /api/records
+- 현재 query
+  - period: "weekly" | "monthly"
+- 참고
+  - 기록탭 UI는 selectedMonth(연/월 선택)를 쓰므로, 실제 연동하려면 period만으로는 부족하고 year/month 또는 startDate/endDate가 추가로 필요함.
+
+[F] 프로필에서 관리 중인 체형/목표 값
+- 위치: app/(tabs)/profile.tsx:28-32, 190-195, 258-261
+- 현재 화면 상태값
+  - heightCm
+  - weightKg
+  - targetWeightKg
+  - targetDurationWeeks
+- 기록탭 체중 섹션에서 최소한 필요한 값
+  - weightKg
+  - targetWeightKg
+- 참고
+  - 현재 코드상 이 값도 아직 서버 저장/조회 연동은 없음.
+
+3. 기록탭 화면을 실제로 살리려면 DB에서 "받아와야 하는 값"
+
+[A] 기록탭 월간 운동 기록 조회
+- 추천 endpoint 예시
+  - GET /api/records?userId={userId}&year={yyyy}&month={mm}
+  - 또는 GET /api/records?userId={userId}&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+- 최소 요청값
+  - userId 또는 uuid
+  - year
+  - month
+
+[B] 월간 요약 응답값
+- monthSummary 계산용
+  - totalKcal
+  - totalMinutes
+  - activeDays
+  - sessionCount
+  - avgKcalPerSession
+  - peakWeekLabel
+  - peakWeekKcal
+
+[C] 달력용 일자별 집계 응답값
+- calendar[] 각 항목 최소값
+  - dateKey: "YYYY-MM-DD"
+  - day: 숫자 일
+  - kcal: 해당 일 총 소모 칼로리
+  - minutes: 해당 일 총 운동 시간
+  - count: 해당 일 세션 수
+- 비고
+  - isToday는 클라이언트에서 계산 가능
+
+[D] 날짜 클릭 시 보여줄 세션 목록 응답값
+- sessions[] 각 항목 최소값
+  - sessionId 또는 recordId
+  - dateKey
+  - performedAt 또는 startedAt
+  - danceId 또는 contentId
+  - danceName
+  - danceType 또는 genre
+  - kcal
+  - durationMinutes 또는 elapsedSeconds
+  - movementScore(있으면 좋음)
+- 클라이언트에서 가공 가능한 값
+  - weekday
+  - time
+  - dateLabel
+  - icon
+  - color
+
+[E] 몸무게 추이용 조회값
+- 추천 endpoint 예시
+  - GET /api/records/weight?userId={userId}&months=6
+  - 또는 GET /api/profile/{userId} + GET /api/weight-history?userId={userId}
+- 최소 응답값
+  - currentWeightKg
+  - targetWeightKg
+  - history[]:
+    - dateKey 또는 monthKey
+    - year
+    - month
+    - weightKg
+    - note(선택)
+- 화면 계산용으로 추가 있으면 좋은 값
+  - deltaFromPreviousMonth
+  - goalGapKg
+- 비고
+  - delta, goalGap, 현재/6개월 변화는 클라이언트 계산도 가능
+
+4. 기록 생성/저장 관점에서 DB로 "보내야 하는 값"
+
+[A] 운동 기록 저장 시 최소값
+- 이 값들은 라이브 세션 결과를 기준으로 records 테이블에 남기면 됨
+  - userId 또는 uuid
+  - sessionId
+  - contentId
+  - danceType
+  - startedAt
+  - endedAt
+  - elapsedSeconds 또는 durationMinutes
+  - caloriesBurned
+  - movementScore
+  - totalFrames(선택)
+  - userWeightKg(선택)
+
+[B] 체중 기록 저장 시 최소값
+- 사용자가 몸무게를 직접 수정/기록할 수 있다면
+  - userId
+  - measuredAt
+  - weightKg
+  - targetWeightKg(선택, 프로필 기준이면 별도 저장 가능)
+  - memo 또는 note(선택)
+
+5. 화면 기준으로 꼭 필요한 필드만 압축하면
+
+[월간 운동 탭]
+- 요청
+  - userId
+  - year
+  - month
+- 응답
+  - summary(totalKcal, totalMinutes, activeDays, sessionCount, avgKcalPerSession, peakWeek)
+  - calendar(dateKey, day, kcal, minutes, count)
+  - sessions(sessionId, dateKey, performedAt, danceName, danceType, kcal, durationMinutes, movementScore)
+
+[몸무게 추이 탭]
+- 요청
+  - userId
+  - 기준 month 또는 최근 N개월
+- 응답
+  - currentWeightKg
+  - targetWeightKg
+  - history(monthKey/dateKey, weightKg, note)
+
+6. 코드 근거 파일
+- app/(tabs)/record.tsx
+  - Session 타입: 9행
+  - CalendarDay 타입: 30행
+  - WeightPoint 타입: 31행
+  - 월간 기록 계산: 76행, 109행, 120행, 143행
+  - 체중 기록 계산: 169행, 196행
+  - 선택 월/날짜 상태: 417행, 423행
+- app/(tabs)/profile.tsx
+  - BodyProfile 타입: 28-32행
+  - 저장 값: 190-195행
+- services/server-config/general-server.ts
+  - /api/records: 78행
+  - /api/profile: 63행
+  - /api/live/session/start: 51행
+  - /api/live/session/end: 55행
+- hooks/use-dance-vision-practice-modal-controller.ts
+  - 세션 시작 body: 414-417행
+  - 세션 종료 body: 310행
+  - 서버 결과값: 350-365행
+  - 프레임 메타데이터: 587-591행
+
+한줄 결론
+- 지금 기록탭은 아직 DB와 직접 주고받지 않음.
+- 다만 실제 연동에 필요한 핵심 값은 "운동 세션 기록(userId, sessionId, 춤 정보, 시간, 칼로리, 점수)" + "체중 기록(weightKg, targetWeightKg, 날짜)"로 정리하면 됨.
