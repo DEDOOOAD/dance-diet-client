@@ -1,0 +1,409 @@
+기록 탭 최소 필수 API 체크리스트
+작성일: 2026-05-18
+
+목적
+- 기록 탭을 켰을 때 월간 운동 기록이 실제로 동기화되기 위해 필요한 최소 API를 정리
+- 체중 추이까지 완성하려면 추가로 필요한 API도 함께 정리
+
+
+1. 최소 필수 1
+POST /api/live/session/start
+
+용도
+- 라이브 운동 시작 시 서버에 세션 생성 요청
+- 서버가 session_id 와 ws_url 을 내려줘야 이후 실시간 분석과 종료 저장이 가능함
+
+클라이언트가 보내는 값 (request body)
+{
+  "uuid": "user-uuid",
+  "dance_type": "kpop",
+  "content_id": "dance-class-id"
+}
+
+필드 설명
+- uuid
+  - 사용자 ID
+  - exercise_sessions.user_id 로 이어질 값
+
+- dance_type
+  - 장르 또는 세션 타입
+  - 예: "kpop", "jazz", "hiphop"
+  - exercise_sessions.genre 로 저장 가능
+
+- content_id
+  - 현재 연습 중인 수업/영상 ID
+  - exercise_sessions.class_id 로 저장 가능
+
+서버가 내려줘야 하는 값 (response body)
+{
+  "session_id": "session-uuid",
+  "ws_url": "ws://server/ws/live/session-uuid"
+}
+
+필드 설명
+- session_id
+  - 라이브 세션 고유 ID
+  - 이후 WS 연결과 /api/live/session/end 에서 사용
+
+- ws_url
+  - WebSocket 연결 주소
+  - 없으면 클라이언트가 기본 주소로 조합할 수도 있음
+
+서버 내부에서 해야 하는 일
+- 새 session_id 생성
+- 사용자/콘텐츠/시작 시각 메모리 등록
+- started_at 기록 시작
+
+
+2. 최소 필수 2
+WS /ws/live/{session_id}
+
+용도
+- 라이브 운동 중 프레임 전송
+- 서버가 분석 결과를 실시간으로 다시 내려줌
+
+클라이언트가 먼저 보내는 메타 JSON
+{
+  "type": "frame_binary",
+  "UUID": "user-uuid",
+  "session_id": "session-uuid",
+  "frame_index": 0,
+  "total_frame": 1,
+  "user_weight": 60
+}
+
+이후 전송
+- 이미지 binary 데이터
+
+메타 필드 설명
+- type
+  - 현재 전송 타입
+  - 지금 클라 구현은 "frame_binary"
+
+- UUID
+  - 사용자 ID
+
+- session_id
+  - 현재 세션 ID
+
+- frame_index
+  - 현재 프레임 순번
+
+- total_frame
+  - 누적 전송 프레임 수
+
+- user_weight
+  - 당시 사용자 체중
+  - 칼로리 계산 보정용으로 사용 가능
+
+서버가 내려줄 수 있는 값 (response message 예시)
+{
+  "type": "frame_result",
+  "session_id": "session-uuid",
+  "total_frames": 12,
+  "elapsed_seconds": 18,
+  "total_calories": 24.5,
+  "movement_score": 87
+}
+
+필드 설명
+- type
+  - "frame_result" 또는 "frame_ack"
+
+- session_id
+  - 세션 ID
+
+- total_frames
+  - 현재까지 누적 프레임 수
+
+- elapsed_seconds
+  - 현재까지 운동 진행 시간
+
+- total_calories
+  - 현재까지 누적 칼로리
+
+- movement_score
+  - 현재 또는 누적 동작 점수
+
+서버 내부에서 누적하면 좋은 값
+- total_frames
+- elapsed_seconds
+- total_calories
+- movement_score
+- user_id
+- class_id
+- genre
+- started_at
+
+
+3. 최소 필수 3
+POST /api/live/session/end
+
+용도
+- 라이브 운동 종료
+- 서버가 세션을 종료하고 DB에 기록 저장
+
+클라이언트가 보내는 값 (request body)
+{
+  "session_id": "session-uuid"
+}
+
+필드 설명
+- session_id
+  - 종료할 세션 ID
+
+서버가 해야 하는 핵심 일
+- session_id 로 세션 상태 찾기
+- ended_at 계산
+- duration_seconds 계산
+- 누적 total_calories 계산
+- movement_score 최종값 확정
+- exercise_sessions 에 insert
+
+서버가 DB에 저장해야 하는 최소값
+- session_id
+- user_id
+- class_id
+- started_at
+- ended_at
+- duration_seconds
+- burned_kcal
+- genre
+
+저장 권장 추가값
+- movement_score
+- total_frames
+- dance_name
+- user_weight_kg
+- created_at
+
+서버 응답 예시
+{
+  "ok": true,
+  "session_id": "session-uuid"
+}
+
+
+4. 최소 필수 4
+GET /api/records?userId=...&year=...&month=...
+
+용도
+- 기록 탭 월간 운동 기록 조회
+- 기록 탭을 켰을 때 가장 핵심인 API
+
+클라이언트가 보내는 값 (query)
+- userId
+- year
+- month
+
+예시
+/api/records?userId=f65f3f87-f292-43b0-92a5-3a3bc9820f12&year=2026&month=5
+
+필드 설명
+- userId
+  - 사용자 ID
+
+- year
+  - 조회 연도
+
+- month
+  - 조회 월, 1~12
+
+서버 내부 조회 기준
+- exercise_sessions 에서
+  - user_id = userId
+  - started_at >= monthStart
+  - started_at < nextMonthStart
+
+필요하면 조인
+- Dance_class
+  - class_id = videoId 기준으로 title/description 사용 가능
+
+서버 응답 구조 예시
+{
+  "summary": {
+    "totalKcal": 1240,
+    "totalMinutes": 180,
+    "activeDays": 7,
+    "sessionCount": 9,
+    "avgKcalPerSession": 138,
+    "peakWeekLabel": "2주차",
+    "peakWeekKcal": 420
+  },
+  "calendar": [
+    {
+      "dateKey": "2026-05-03",
+      "day": 3,
+      "kcal": 180,
+      "minutes": 24,
+      "count": 1
+    }
+  ],
+  "sessions": [
+    {
+      "sessionId": "0f7f9d6d-0000-0000-0000-000000000001",
+      "dateKey": "2026-05-03",
+      "performedAt": "2026-05-03T19:30:00+09:00",
+      "danceName": "K-POP 루틴",
+      "danceType": "kpop",
+      "kcal": 180,
+      "durationMinutes": 24,
+      "movementScore": 87
+    }
+  ]
+}
+
+응답 필드 설명
+
+[summary]
+- totalKcal
+  - 월 누적 칼로리
+
+- totalMinutes
+  - 월 누적 운동 시간(분)
+
+- activeDays
+  - 운동한 날짜 수
+
+- sessionCount
+  - 세션 개수
+
+- avgKcalPerSession
+  - 세션당 평균 칼로리
+
+- peakWeekLabel
+  - 가장 많이 운동한 주차
+
+- peakWeekKcal
+  - 해당 주차의 누적 칼로리
+
+[calendar]
+- dateKey
+  - YYYY-MM-DD
+
+- day
+  - 일자 숫자
+
+- kcal
+  - 그날 누적 칼로리
+
+- minutes
+  - 그날 누적 운동 시간
+
+- count
+  - 그날 세션 개수
+
+[sessions]
+- sessionId
+  - 세션 ID
+
+- dateKey
+  - 해당 세션의 날짜
+
+- performedAt
+  - 실제 수행 시각
+
+- danceName
+  - 기록 화면에 보여줄 수업/댄스 이름
+
+- danceType
+  - 장르
+
+- kcal
+  - 해당 세션 칼로리
+
+- durationMinutes
+  - 해당 세션 운동 시간(분)
+
+- movementScore
+  - 동작 점수
+
+
+5. 체중 추이까지 완성하려면 추가
+GET /api/weight-history?userId=...&months=6
+
+용도
+- 기록 탭 체중 추이 그래프/목록 조회
+
+클라이언트가 보내는 값 (query)
+- userId
+- months
+
+예시
+/api/weight-history?userId=f65f3f87-f292-43b0-92a5-3a3bc9820f12&months=6
+
+필드 설명
+- userId
+  - 사용자 ID
+
+- months
+  - 최근 몇 개월 조회할지
+  - 기본 6 권장
+
+서버 응답 예시
+{
+  "currentWeightKg": 61.2,
+  "targetWeightKg": 58.0,
+  "history": [
+    {
+      "dateKey": "2026-01-01",
+      "year": 2026,
+      "month": 1,
+      "weightKg": 64.0,
+      "note": "시작 기록"
+    },
+    {
+      "dateKey": "2026-02-01",
+      "year": 2026,
+      "month": 2,
+      "weightKg": 63.1,
+      "note": null
+    }
+  ]
+}
+
+응답 필드 설명
+- currentWeightKg
+  - 현재 체중
+
+- targetWeightKg
+  - 목표 체중
+
+- history
+  - 월별 또는 측정일별 체중 배열
+
+history 내부 필드
+- dateKey
+  - YYYY-MM-DD
+
+- year
+  - 연도
+
+- month
+  - 월
+
+- weightKg
+  - 체중 값
+
+- note
+  - 메모
+
+
+6. 기록 탭 동기화의 최소 조건
+
+운동 기록만 동기화하려면
+- POST /api/live/session/start
+- WS /ws/live/{session_id}
+- POST /api/live/session/end
+- GET /api/records?userId=...&year=...&month=...
+
+체중 추이까지 동기화하려면 추가
+- GET /api/weight-history?userId=...&months=6
+
+
+7. 아주 짧은 결론
+
+- 라이브 세션 저장 원본: exercise_sessions
+- 기록 탭 운동 조회 API: /api/records
+- 체중 추이 조회 API: /api/weight-history
+- 현재 체중 fallback: /api/profile/{uuid}

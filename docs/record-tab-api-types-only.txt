@@ -1,0 +1,262 @@
+// 기록 탭 최소 API 타입 정리
+// 역할별 제목만 붙인 붙여넣기용 메모
+
+// 1. 라이브 세션 시작 요청
+type LiveSessionStartRequest = {
+  uuid: string;
+  dance_type: string;
+  content_id: string;
+};
+
+// 2. 라이브 세션 시작 응답
+type LiveSessionStartResponse = {
+  session_id: string;
+  ws_url?: string;
+};
+
+// 3. 실시간 프레임 전송 메타데이터
+type LiveFrameBinaryMeta = {
+  type: 'frame_binary';
+  UUID: string;
+  session_id: string;
+  frame_index: number;
+  total_frame: number;
+  user_weight: number;
+};
+
+// 4. 실시간 분석 결과 메시지
+type LiveFrameResultMessage = {
+  type: 'frame_result' | 'frame_ack';
+  session_id: string;
+  total_frames: number;
+  elapsed_seconds: number;
+  total_calories: number;
+  movement_score: number;
+};
+
+// 5. 라이브 세션 종료 요청
+type LiveSessionEndRequest = {
+  session_id: string;
+};
+
+// 6. 라이브 세션 종료 응답
+type LiveSessionEndResponse = {
+  ok: boolean;
+  session_id: string;
+};
+
+// 7. 운동 세션 DB 저장 행
+type ExerciseSessionRow = {
+  session_id: string;
+  user_id: string;
+  class_id: string | null;
+  dance_name?: string | null;
+  genre: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  burned_kcal: number;
+  movement_score?: number | null;
+  total_frames?: number | null;
+  user_weight_kg?: number | null;
+  created_at?: string;
+};
+
+// 8. 기록 탭 월간 조회 쿼리
+type RecordsQuery = {
+  userId: string;
+  year: number;
+  month: number;
+};
+
+// 9. 기록 탭 월간 요약
+type RecordSummary = {
+  totalKcal: number;
+  totalMinutes: number;
+  activeDays: number;
+  sessionCount: number;
+  avgKcalPerSession: number;
+  peakWeekLabel: string;
+  peakWeekKcal: number;
+};
+
+// 10. 기록 탭 캘린더 일별 집계
+type RecordCalendarItem = {
+  dateKey: string;
+  day: number;
+  kcal: number;
+  minutes: number;
+  count: number;
+};
+
+// 11. 기록 탭 세션 목록 아이템
+type RecordSessionItem = {
+  sessionId: string;
+  dateKey: string;
+  performedAt: string;
+  danceName: string;
+  danceType: string | null;
+  kcal: number;
+  durationMinutes: number;
+  movementScore: number | null;
+};
+
+// 12. 기록 탭 월간 조회 응답
+type RecordsResponse = {
+  summary: RecordSummary;
+  calendar: RecordCalendarItem[];
+  sessions: RecordSessionItem[];
+};
+
+// 13. 체중 추이 조회 쿼리
+type WeightHistoryQuery = {
+  userId: string;
+  months: number;
+};
+
+// 14. 체중 추이 히스토리 아이템
+type WeightHistoryItem = {
+  dateKey: string;
+  year: number;
+  month: number;
+  weightKg: number;
+  note: string | null;
+};
+
+// 15. 체중 추이 조회 응답
+type WeightHistoryResponse = {
+  currentWeightKg: number | null;
+  targetWeightKg: number | null;
+  history: WeightHistoryItem[];
+};
+
+// 16. 프로필 fallback 응답
+type ProfileFallbackResponse = {
+  uuid: string;
+  name: string;
+  email: string;
+  age: number;
+  password: string;
+  created_at: string;
+  height: number | null;
+  weight: number | null;
+  target_weight: number | null;
+  target_day: string | null;
+  target_kcal: number | null;
+  today_target_kcal: number | null;
+  bucket_profile_photo: string | null;
+  filepath: string | null;
+  profile_image_url: string | null;
+  current_streak: number | null;
+};
+
+// 예시 1. POST /api/live/session/start 요청값
+const liveSessionStartRequestExample: LiveSessionStartRequest = {
+  uuid: 'user-uuid',
+  dance_type: 'kpop',
+  content_id: 'dance-class-id',
+};
+
+// 예시 2. WS /ws/live/{session_id} 메타값
+const liveFrameBinaryMetaExample: LiveFrameBinaryMeta = {
+  type: 'frame_binary',
+  UUID: 'user-uuid',
+  session_id: 'session-uuid',
+  frame_index: 0,
+  total_frame: 1,
+  user_weight: 60,
+};
+
+// 예시 3. POST /api/live/session/end 요청값
+const liveSessionEndRequestExample: LiveSessionEndRequest = {
+  session_id: 'session-uuid',
+};
+
+// 예시 4. GET /api/records 쿼리값
+const recordsQueryExample: RecordsQuery = {
+  userId: 'user-uuid',
+  year: 2026,
+  month: 5,
+};
+
+// 예시 5. GET /api/records 응답값
+const recordsResponseExample: RecordsResponse = {
+  summary: {
+    totalKcal: 1240,
+    totalMinutes: 180,
+    activeDays: 7,
+    sessionCount: 9,
+    avgKcalPerSession: 138,
+    peakWeekLabel: '2주차',
+    peakWeekKcal: 420,
+  },
+  calendar: [
+    {
+      dateKey: '2026-05-03',
+      day: 3,
+      kcal: 180,
+      minutes: 24,
+      count: 1,
+    },
+  ],
+  sessions: [
+    {
+      sessionId: 'session-uuid',
+      dateKey: '2026-05-03',
+      performedAt: '2026-05-03T19:30:00+09:00',
+      danceName: 'K-POP 루틴',
+      danceType: 'kpop',
+      kcal: 180,
+      durationMinutes: 24,
+      movementScore: 87,
+    },
+  ],
+};
+
+// 예시 6. GET /api/weight-history 쿼리값
+const weightHistoryQueryExample: WeightHistoryQuery = {
+  userId: 'user-uuid',
+  months: 6,
+};
+
+// 예시 7. GET /api/weight-history 응답값
+const weightHistoryResponseExample: WeightHistoryResponse = {
+  currentWeightKg: 61.2,
+  targetWeightKg: 58.0,
+  history: [
+    {
+      dateKey: '2026-01-01',
+      year: 2026,
+      month: 1,
+      weightKg: 64.0,
+      note: '시작 기록',
+    },
+    {
+      dateKey: '2026-02-01',
+      year: 2026,
+      month: 2,
+      weightKg: 63.1,
+      note: null,
+    },
+  ],
+};
+
+// 예시 8. GET /api/profile/{uuid} fallback 응답값
+const profileFallbackResponseExample: ProfileFallbackResponse = {
+  uuid: 'user-uuid',
+  name: 'LEE',
+  email: 'lee@example.com',
+  age: 24,
+  password: '***',
+  created_at: '2026-05-18T10:00:00+09:00',
+  height: 168,
+  weight: 61.2,
+  target_weight: 58.0,
+  target_day: '2026-08-01T00:00:00+09:00',
+  target_kcal: 420,
+  today_target_kcal: 420,
+  bucket_profile_photo: null,
+  filepath: null,
+  profile_image_url: null,
+  current_streak: 3,
+};
